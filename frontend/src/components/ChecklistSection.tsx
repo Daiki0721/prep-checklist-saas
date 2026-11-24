@@ -6,7 +6,7 @@
 //4. priority === "high" の項目にはバッジをつけ、仕込みに時間がかかるものや優先度が高いものを際立たせる。
 
 import React from "react";
-import { ChecklistItem } from "../types/prep";
+import type { ChecklistItem } from "../types/prep";
 
 interface ChecklistSectionProps {
   items: ChecklistItem[];

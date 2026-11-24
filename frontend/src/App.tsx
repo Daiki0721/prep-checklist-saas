@@ -4,7 +4,7 @@
 //スマホや狭い画面では縦に並ぶレスポンシブレイアウト
 
 import { useState } from "react";
-import { ChecklistItem } from "./types/prep";
+import type { ChecklistItem } from "./types/prep";
 import { MOCK_PREP_SHEET, SAMPLE_RAW_NOTES } from "./data/mockPrepSheet";
 import { PrepInputForm } from "./components/PrepInputForm";
 import { OrganizedNotesCard } from "./components/OrganizedNotesCard";

@@ -1,7 +1,7 @@
 // 動作確認用のモックデータ(Test)
 // AIのAPIをつなぐ前に、実際の画面で「どう見えるか」を確かめるためのサンプルデータ
 
-import { PrepSheet } from "../types/prep";
+import type { PrepSheet } from "../types/prep";
 
 //　サンプル(test)ノート
 export const SAMPLE_RAW_NOTES = `dinner prep tonight duck breast x12 score skin & portion 180g, save trim for jus

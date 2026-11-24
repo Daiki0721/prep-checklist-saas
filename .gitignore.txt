@@ -23,5 +23,6 @@ build/
 
 # OS / Editor
 .DS_Store
+**/.DS_Store
 .vscode/*
 !.vscode/extensions.json

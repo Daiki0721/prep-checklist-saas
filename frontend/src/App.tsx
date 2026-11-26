@@ -1,74 +1,167 @@
-//画面全体を src/App.tsx に組み立てる
-//入力フォーム・整理済みメモ・チェックリストを1画面
-//画面幅が広いPC/タブレットでは「左：メモ入力、右：整理済みメモ＋チェックリスト」の2カラムになり、
-//スマホや狭い画面では縦に並ぶレスポンシブレイアウト
-
-import { useState } from "react";
-import type { ChecklistItem } from "./types/prep";
-import { MOCK_PREP_SHEET, SAMPLE_RAW_NOTES } from "./data/mockPrepSheet";
-import { PrepInputForm } from "./components/PrepInputForm";
-import { OrganizedNotesCard } from "./components/OrganizedNotesCard";
+import { useEffect, useRef, useState } from "react";
+import { prepApi } from "./api/prepApi";
 import { ChecklistSection } from "./components/ChecklistSection";
+import { OrganizedNotesCard } from "./components/OrganizedNotesCard";
+import { PrepInputForm } from "./components/PrepInputForm";
+import { SAMPLE_RAW_NOTES } from "./data/mockPrepSheet";
+import type { ChecklistItem, PrepSheet } from "./types/prep";
 
 export function App() {
-  const [title, setTitle] = useState<string>(MOCK_PREP_SHEET.title);
-  const [rawInput, setRawInput] = useState<string>(MOCK_PREP_SHEET.raw_input);
-  const [organizedNotes, setOrganizedNotes] = useState<string>(
-    MOCK_PREP_SHEET.organized_notes
-  );
-  const [items, setItems] = useState<ChecklistItem[]>(MOCK_PREP_SHEET.items);
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [currentSheetId, setCurrentSheetId] = useState<number | null>(null);
+  const [title, setTitle] = useState<string>("Dinner Service Prep");
+  const [rawInput, setRawInput] = useState<string>(SAMPLE_RAW_NOTES);
+  const [organizedNotes, setOrganizedNotes] = useState<string>("");
+  const [items, setItems] = useState<ChecklistItem[]>([]);
 
-  // モックの生成処理（後ほどDjangoのPOST /api/prep-sheets/generate/ に置き換え）
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    // 500ms後にモックの整理済みメモとチェックリストを生成する
-    setTimeout(() => {
-      // 入力されたメモを行ごとに分割し、空行を除外して整理する
-      const lines = rawInput
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      // 各行をチェックリスト項目に変換する
-      const generatedItems: ChecklistItem[] = lines.map((line, index) => ({
-        id: `gen-${Date.now()}-${index}`,
-        category: "Mise en Place",
-        task: line,
-        quantity: "",
-        priority: index === 0 ? "high" : "normal",
-        notes: "",
-        is_completed: false,
-        order: index + 1,
-      }));
-      // 整理済みメモとチェックリストを更新する
-      setOrganizedNotes(
-        "Review station priorities before service and confirm par levels with the team."
-      );
-      setItems(generatedItems);
-      setIsGenerating(false);
-    }, 500);
+  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isSavingNotes, setIsSavingNotes] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // 直前にDBへ保存した organized_notes を記録し、変更がないときの無駄なPATCHを防ぐ
+  const lastSavedNotesRef = useRef<string>("");
+
+  const applySheetToState = (sheet: PrepSheet) => {
+    setCurrentSheetId(sheet.id);
+    setTitle(sheet.title);
+    setRawInput(sheet.raw_input);
+    setOrganizedNotes(sheet.organized_notes);
+    lastSavedNotesRef.current = sheet.organized_notes;
+    setItems(sheet.items);
   };
-  // サンプルノートをロードする処理
+
+  // 初回表示時にDBから最新の仕込みシートを取得
+  useEffect(() => {
+    let active = true;
+
+    const fetchInitialSheet = async () => {
+      try {
+        setErrorMessage(null);
+        const sheets = await prepApi.listSheets();
+        if (!active) return;
+
+        if (sheets.length > 0) {
+          applySheetToState(sheets[0]);
+        }
+      } catch (err) {
+        if (!active) return;
+        setErrorMessage(
+          err instanceof Error ? err.message : "Failed to load prep sheets."
+        );
+      } finally {
+        if (active) {
+          setIsLoadingInitial(false);
+        }
+      }
+    };
+
+    fetchInitialSheet();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // メモ入力 → AI生成 → DB保存
+  const handleGenerate = async () => {
+    if (!rawInput.trim() || isGenerating) return;
+
+    setIsGenerating(true);
+    setErrorMessage(null);
+
+    try {
+      const createdSheet = await prepApi.generateSheet({
+        title: title.trim() || undefined,
+        raw_input: rawInput,
+      });
+      applySheetToState(createdSheet);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to generate prep checklist."
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // 整理済みメモの編集をDB保存（onBlur で呼ばれる）
+  const handleSaveOrganizedNotes = async () => {
+    if (!currentSheetId) return;
+    if (organizedNotes === lastSavedNotesRef.current) return;
+
+    setIsSavingNotes(true);
+    setErrorMessage(null);
+
+    try {
+      const updated = await prepApi.updateSheet(currentSheetId, {
+        organized_notes: organizedNotes,
+      });
+      setOrganizedNotes(updated.organized_notes);
+      lastSavedNotesRef.current = updated.organized_notes;
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to save organized notes."
+      );
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
+
+  // チェック状態の切り替え（楽観的UI更新 + DB永続化）
+  const handleToggleItem = async (itemId: number) => {
+    const target = items.find((item) => item.id === itemId);
+    if (!target) return;
+
+    const nextCompleted = !target.is_completed;
+    setErrorMessage(null);
+
+    // 先に画面を更新
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, is_completed: nextCompleted } : item
+      )
+    );
+
+    try {
+      const updatedItem = await prepApi.updateChecklistItem(itemId, {
+        is_completed: nextCompleted,
+      });
+      setItems((prev) =>
+        prev.map((item) => (item.id === itemId ? updatedItem : item))
+      );
+    } catch (err) {
+      // 失敗したら元の状態に戻す
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, is_completed: target.is_completed } : item
+        )
+      );
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to update checklist item."
+      );
+    }
+  };
+
+  // チェックリスト項目の削除（DB削除 + 画面反映）
+  const handleDeleteItem = async (itemId: number) => {
+    setErrorMessage(null);
+    try {
+      await prepApi.deleteChecklistItem(itemId);
+      setItems((prev) => prev.filter((item) => item.id !== itemId));
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to delete checklist item."
+      );
+    }
+  };
+
   const handleLoadSample = () => {
     setTitle("Dinner Service Prep");
     setRawInput(SAMPLE_RAW_NOTES);
   };
-  // チェックリスト項目の完了状態を切り替える処理
-  const handleToggleItem = (itemId: string) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === itemId ? { ...item, is_completed: !item.is_completed } : item
-      )
-    );
-  };
-  // チェックリスト項目を削除する処理
-  const handleDeleteItem = (itemId: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== itemId));
-  };
 
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900">
-      {/* ヘッダー */}
       <header className="bg-white border-b border-stone-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div>
@@ -80,40 +173,61 @@ export function App() {
             </p>
           </div>
           <span className="rounded-md bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600">
-            MVP Preview
+            {currentSheetId ? `Sheet #${currentSheetId}` : "Draft"}
           </span>
         </div>
       </header>
 
-      {/* メインコンテンツ */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* 左カラム：メモ入力（5/12） */}
-          <div className="lg:col-span-5">
-            <PrepInputForm
-              title={title}
-              rawInput={rawInput}
-              isGenerating={isGenerating}
-              onTitleChange={setTitle}
-              onRawInputChange={setRawInput}
-              onGenerate={handleGenerate}
-              onLoadSample={handleLoadSample}
-            />
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        {errorMessage && (
+          <div
+            role="alert"
+            className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex items-center justify-between gap-4"
+          >
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => setErrorMessage(null)}
+              className="text-xs font-semibold underline cursor-pointer"
+            >
+              Dismiss
+            </button>
           </div>
+        )}
 
-          {/* 右カラム：整理済みメモ＋チェックリスト（7/12） */}
-          <div className="lg:col-span-7 space-y-6">
-            <OrganizedNotesCard
-              notes={organizedNotes}
-              onChangeNotes={setOrganizedNotes}
-            />
-            <ChecklistSection
-              items={items}
-              onToggleItem={handleToggleItem}
-              onDeleteItem={handleDeleteItem}
-            />
+        {isLoadingInitial ? (
+          <div className="rounded-xl bg-white border border-stone-200 p-8 text-center text-sm text-stone-500">
+            Loading prep sheet...
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="lg:col-span-5">
+              <PrepInputForm
+                title={title}
+                rawInput={rawInput}
+                isGenerating={isGenerating}
+                onTitleChange={setTitle}
+                onRawInputChange={setRawInput}
+                onGenerate={handleGenerate}
+                onLoadSample={handleLoadSample}
+              />
+            </div>
+
+            <div className="lg:col-span-7 space-y-6">
+              <OrganizedNotesCard
+                notes={organizedNotes}
+                isSaving={isSavingNotes}
+                onChangeNotes={setOrganizedNotes}
+                onSaveNotes={handleSaveOrganizedNotes}
+              />
+              <ChecklistSection
+                items={items}
+                onToggleItem={handleToggleItem}
+                onDeleteItem={handleDeleteItem}
+              />
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

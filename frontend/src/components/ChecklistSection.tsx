@@ -10,8 +10,8 @@ import type { ChecklistItem } from "../types/prep";
 
 interface ChecklistSectionProps {
   items: ChecklistItem[];
-  onToggleItem: (itemId: string) => void;
-  onDeleteItem: (itemId: string) => void;
+  onToggleItem: (itemId: number) => void;
+  onDeleteItem: (itemId: number) => void;
 }
 
 export const ChecklistSection: React.FC<ChecklistSectionProps> = ({

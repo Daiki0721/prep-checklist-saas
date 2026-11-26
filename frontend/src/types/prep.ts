@@ -2,8 +2,10 @@
 
 export type PriorityLevel = "high" | "normal";
 
+
 export interface ChecklistItem {
-  id: string;
+  id: number;
+  prep_sheet: number;
   category: string;
   task: string;
   quantity: string;
@@ -13,10 +15,13 @@ export interface ChecklistItem {
   order: number;
 }
 
+
 export interface PrepSheet {
-  id: string;
+  id: number;
   title: string;
   raw_input: string;
   organized_notes: string;
   items: ChecklistItem[];
+  created_at: string;
+  updated_at: string;
 }

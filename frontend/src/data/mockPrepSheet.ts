@@ -14,14 +14,15 @@ label & date everything`;
 
 //　仕込みシート・チェックリストのモックデータ(test)
 export const MOCK_PREP_SHEET: PrepSheet = {
-  id: "sheet-1",
+  id: 1,
   title: "Dinner Service Prep",
   raw_input: SAMPLE_RAW_NOTES,
   organized_notes:
     "Start veal stock reduction early and skim fat regularly. Check walk-in for existing mirepoix before prepping fresh vegetables. Label and date all containers.",
   items: [
     {
-      id: "item-1",
+      id: 101,
+      prep_sheet: 1,
       category: "Sauces & Stocks",
       task: "Reduce veal stock by half",
       quantity: "4 L",
@@ -31,7 +32,8 @@ export const MOCK_PREP_SHEET: PrepSheet = {
       order: 1,
     },
     {
-      id: "item-2",
+      id: 102,
+      prep_sheet: 1,
       category: "Proteins",
       task: "Portion duck breasts and score skin",
       quantity: "12 x 180g",
@@ -41,7 +43,8 @@ export const MOCK_PREP_SHEET: PrepSheet = {
       order: 2,
     },
     {
-      id: "item-3",
+      id: 103,
+      prep_sheet: 1,
       category: "Proteins",
       task: "Peel and devein prawns",
       quantity: "2 kg",
@@ -51,7 +54,8 @@ export const MOCK_PREP_SHEET: PrepSheet = {
       order: 3,
     },
     {
-      id: "item-4",
+      id: 104,
+      prep_sheet: 1,
       category: "Produce / Garde Manger",
       task: "Dice shallots",
       quantity: "300 g",

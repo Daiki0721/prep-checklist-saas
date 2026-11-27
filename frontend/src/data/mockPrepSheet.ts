@@ -19,6 +19,8 @@ export const MOCK_PREP_SHEET: PrepSheet = {
   raw_input: SAMPLE_RAW_NOTES,
   organized_notes:
     "Start veal stock reduction early and skim fat regularly. Check walk-in for existing mirepoix before prepping fresh vegetables. Label and date all containers.",
+  created_at: "2026-11-27T12:00:00Z",
+  updated_at: "2026-11-27T12:00:00Z",
   items: [
     {
       id: 101,
